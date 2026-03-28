@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Communication Language
+
+Always reply to the user in **Chinese (Simplified)**. Write all prompts, instructions, and content sent to AI models in **English**.
+
 ## Project Overview
 
 DeerFlow is a LangGraph-based AI super agent system. The agent orchestrates sub-agents, memory, isolated sandbox execution, and extensible skills to handle complex tasks. DeerFlow 2.0 is a ground-up rewrite — it shares no code with v1 (which lives on the `1.x` branch).
