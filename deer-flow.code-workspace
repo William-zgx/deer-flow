@@ -12,7 +12,8 @@
         "packageManager": "ms-python.python:pip",
         "workspace": "deer-flow"
       }
-    ]
+    ],
+    "makefile.configureOnOpen": false
   },
   "launch": {
     "version": "0.2.0",
