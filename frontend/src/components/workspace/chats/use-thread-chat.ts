@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { uuid } from "@/core/utils/uuid";
 
@@ -27,31 +27,32 @@ export function useThreadChat() {
     return pathname.endsWith("/new") || !isValidUUID(threadIdFromPath);
   });
 
-  // 监听真正的路由变化，如果用户点击了侧边栏其他的对话或者“新建对话”按钮
   useEffect(() => {
-    // 检查当前的 threadId 状态和路径中的 thread_id 是否一致
-    // 注意：当我们使用 history.replaceState 时，threadIdFromPath 不会改变，
-    // 但是在这个 hook 外部，业务代码已经手动调用了 setThreadId(new_uuid)，
-    // 所以这里只有当“真正”发生了页面导航跳转时（也就是路径参数与我们当前状态不匹配时），才需要重置
     const isNewPath = pathname.endsWith("/new") || !isValidUUID(threadIdFromPath);
 
     if (isNewPath) {
-      // 只有当我们处于 /new 路由，并且当前的 threadId 不是有效UUID，或者我们刚刚从其他路由跳回 /new 时，
-      // 我们才重新生成并设置为新会话
-      setIsNewThread(true);
-      // 如果当前 threadId 已经是我们在新建页面生成的临时 UUID，不要覆盖它
-      // 否则生成一个新的 UUID
-      setThreadId((prev) => (isValidUUID(prev) ? prev : uuid()));
+      // 关键修复：
+      // 如果当前组件的状态认为已经是老对话（isNewThread === false），
+      // 且 threadId 是一个有效的 UUID（说明是在发送第一条消息后 history.replaceState 造成的滞后 pathname），
+      // 那么我们 **不要** 把状态重置为新建对话！
+      setIsNewThread((prevIsNewThread) => {
+        // 如果已经是老对话了，坚决保持 false
+        if (!prevIsNewThread) return false;
+        return true;
+      });
+
+      setThreadId((prev) => {
+        // 只有当没有有效 UUID 时才生成新的
+        if (isValidUUID(prev)) return prev;
+        return uuid();
+      });
     } else {
-      // 如果路径是一个有效的 UUID
-      // 如果当前状态的 threadId 和路径不一致，说明发生了真正的页面跳转，需要同步状态
-      if (threadIdFromPath !== threadId) {
-        setIsNewThread(false);
-        setThreadId(threadIdFromPath);
-      }
+      // 如果路径是有效的真实 UUID（用户从列表点击进来，触发了真实的路由导航）
+      // 确保状态同步到这个真实的 UUID
+      setIsNewThread(false);
+      setThreadId(threadIdFromPath);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathname, threadIdFromPath]); // 不将 threadId 放入依赖，避免循环触发
+  }, [pathname, threadIdFromPath]);
 
   const isMock = searchParams.get("mock") === "true";
   return { threadId, setThreadId, isNewThread, setIsNewThread, isMock };
