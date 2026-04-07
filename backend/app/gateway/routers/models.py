@@ -9,7 +9,8 @@ router = APIRouter(prefix="/api", tags=["models"])
 class ModelResponse(BaseModel):
     """Response model for model information."""
 
-    name: str = Field(..., description="Unique identifier for the model")
+    id: str = Field(..., description="Unique identifier for the model (used by frontend)")
+    name: str = Field(..., description="Internal unique identifier for the model")
     model: str = Field(..., description="Actual provider model identifier")
     display_name: str | None = Field(None, description="Human-readable name")
     description: str | None = Field(None, description="Model description")
@@ -20,7 +21,7 @@ class ModelResponse(BaseModel):
 class ModelsListResponse(BaseModel):
     """Response model for listing all models."""
 
-    models: list[ModelResponse]
+    data: list[ModelResponse]
 
 
 @router.get(
@@ -41,14 +42,16 @@ async def list_models() -> ModelsListResponse:
     Example Response:
         ```json
         {
-            "models": [
+            "data": [
                 {
+                    "id": "gpt-4",
                     "name": "gpt-4",
                     "display_name": "GPT-4",
                     "description": "OpenAI GPT-4 model",
                     "supports_thinking": false
                 },
                 {
+                    "id": "claude-3-opus",
                     "name": "claude-3-opus",
                     "display_name": "Claude 3 Opus",
                     "description": "Anthropic Claude 3 Opus model",
@@ -61,6 +64,7 @@ async def list_models() -> ModelsListResponse:
     config = get_app_config()
     models = [
         ModelResponse(
+            id=model.name,
             name=model.name,
             model=model.model,
             display_name=model.display_name,
@@ -70,7 +74,7 @@ async def list_models() -> ModelsListResponse:
         )
         for model in config.models
     ]
-    return ModelsListResponse(models=models)
+    return ModelsListResponse(data=models)
 
 
 @router.get(
@@ -94,6 +98,7 @@ async def get_model(model_name: str) -> ModelResponse:
     Example Response:
         ```json
         {
+            "id": "gpt-4",
             "name": "gpt-4",
             "display_name": "GPT-4",
             "description": "OpenAI GPT-4 model",
@@ -107,6 +112,7 @@ async def get_model(model_name: str) -> ModelResponse:
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
 
     return ModelResponse(
+        id=model.name,
         name=model.name,
         model=model.model,
         display_name=model.display_name,
