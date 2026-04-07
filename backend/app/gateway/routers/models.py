@@ -9,7 +9,8 @@ router = APIRouter(prefix="/api", tags=["models"])
 class ModelResponse(BaseModel):
     """Response model for model information."""
 
-    name: str = Field(..., description="Unique identifier for the model")
+    id: str = Field(..., description="Unique identifier for the model (used by frontend)")
+    name: str = Field(..., description="Internal unique identifier for the model")
     model: str = Field(..., description="Actual provider model identifier")
     display_name: str | None = Field(None, description="Human-readable name")
     description: str | None = Field(None, description="Model description")
@@ -61,6 +62,7 @@ async def list_models() -> ModelsListResponse:
     config = get_app_config()
     models = [
         ModelResponse(
+            id=model.name,
             name=model.name,
             model=model.model,
             display_name=model.display_name,
@@ -107,6 +109,7 @@ async def get_model(model_name: str) -> ModelResponse:
         raise HTTPException(status_code=404, detail=f"Model '{model_name}' not found")
 
     return ModelResponse(
+        id=model.name,
         name=model.name,
         model=model.model,
         display_name=model.display_name,
