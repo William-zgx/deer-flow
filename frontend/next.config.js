@@ -52,6 +52,46 @@ const config = {
         source: "/api/agents/:path*",
         destination: `${gatewayURL}/api/agents/:path*`,
       });
+      rewrites.push({
+        source: "/api/models",
+        destination: `${gatewayURL}/api/models`,
+      });
+      rewrites.push({
+        source: "/api/mcp/:path*",
+        destination: `${gatewayURL}/api/mcp/:path*`,
+      });
+      rewrites.push({
+        source: "/api/mcp",
+        destination: `${gatewayURL}/api/mcp`,
+      });
+      rewrites.push({
+        source: "/api/memory/:path*",
+        destination: `${gatewayURL}/api/memory/:path*`,
+      });
+      rewrites.push({
+        source: "/api/memory",
+        destination: `${gatewayURL}/api/memory`,
+      });
+      rewrites.push({
+        source: "/api/skills/:path*",
+        destination: `${gatewayURL}/api/skills/:path*`,
+      });
+      rewrites.push({
+        source: "/api/skills",
+        destination: `${gatewayURL}/api/skills`,
+      });
+      rewrites.push({
+        source: "/api/channels/:path*",
+        destination: `${gatewayURL}/api/channels/:path*`,
+      });
+      rewrites.push({
+        source: "/api/channels",
+        destination: `${gatewayURL}/api/channels`,
+      });
+      rewrites.push({
+        source: "/api/threads/:path*",
+        destination: `${gatewayURL}/api/threads/:path*`,
+      });
     }
 
     return rewrites;

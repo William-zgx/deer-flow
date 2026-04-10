@@ -4,6 +4,7 @@ import {
   Download,
   FileJson,
   FileText,
+  GitBranch,
   MoreHorizontal,
   Pencil,
   Share2,
@@ -54,9 +55,102 @@ import {
   useThreads,
 } from "@/core/threads/hooks";
 import type { AgentThread, AgentThreadState } from "@/core/threads/types";
-import { pathOfThread, titleOfThread } from "@/core/threads/utils";
+import {
+  agentNameOfThreadMetadata,
+  isBranchThreadMetadata,
+  pathOfThread,
+  titleOfThread,
+} from "@/core/threads/utils";
 import { env } from "@/env";
 import { isIMEComposing } from "@/lib/ime";
+
+type ThreadTreeNode = {
+  thread: AgentThread;
+  children: ThreadTreeNode[];
+  latestUpdatedAt: number;
+};
+
+function parseThreadUpdatedAt(value: string | undefined) {
+  if (!value) {
+    return 0;
+  }
+
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    return numeric;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function finalizeThreadNode(node: ThreadTreeNode) {
+  for (const child of node.children) {
+    finalizeThreadNode(child);
+    node.latestUpdatedAt = Math.max(node.latestUpdatedAt, child.latestUpdatedAt);
+  }
+
+  node.children.sort((left, right) => right.latestUpdatedAt - left.latestUpdatedAt);
+}
+
+function buildThreadTree(threads: AgentThread[]) {
+  const nodes = new Map<string, ThreadTreeNode>();
+  for (const thread of threads) {
+    nodes.set(thread.thread_id, {
+      thread,
+      children: [],
+      latestUpdatedAt: parseThreadUpdatedAt(thread.updated_at),
+    });
+  }
+
+  const roots: ThreadTreeNode[] = [];
+  for (const thread of threads) {
+    const node = nodes.get(thread.thread_id);
+    if (!node) {
+      continue;
+    }
+
+    const parentThreadId =
+      typeof thread.metadata?.parent_thread_id === "string"
+        ? thread.metadata.parent_thread_id
+        : undefined;
+
+    if (
+      isBranchThreadMetadata(thread.metadata) &&
+      parentThreadId &&
+      parentThreadId !== thread.thread_id
+    ) {
+      const parentNode = nodes.get(parentThreadId);
+      if (parentNode) {
+        parentNode.children.push(node);
+        continue;
+      }
+    }
+
+    roots.push(node);
+  }
+
+  for (const root of roots) {
+    finalizeThreadNode(root);
+  }
+  roots.sort((left, right) => right.latestUpdatedAt - left.latestUpdatedAt);
+
+  return roots;
+}
+
+function flattenThreadTree(nodes: ThreadTreeNode[]) {
+  const ordered: AgentThread[] = [];
+
+  const visit = (items: ThreadTreeNode[]) => {
+    for (const item of items) {
+      ordered.push(item.thread);
+      visit(item.children);
+    }
+  };
+
+  visit(nodes);
+  return ordered;
+}
 
 export function RecentChatList() {
   const { t } = useI18n();
@@ -64,6 +158,8 @@ export function RecentChatList() {
   const pathname = usePathname();
   const { thread_id: threadIdFromPath } = useParams<{ thread_id: string }>();
   const { data: threads = [] } = useThreads();
+  const threadTree = buildThreadTree(threads);
+  const orderedThreads = flattenThreadTree(threadTree);
   const { mutate: deleteThread } = useDeleteThread();
   const { mutate: renameThread } = useRenameThread();
 
@@ -76,19 +172,26 @@ export function RecentChatList() {
     (threadId: string) => {
       deleteThread({ threadId });
       if (threadId === threadIdFromPath) {
-        const threadIndex = threads.findIndex((t) => t.thread_id === threadId);
+        const threadIndex = orderedThreads.findIndex((t) => t.thread_id === threadId);
         let nextThreadId = "new";
+        let nextThreadAgentName: string | undefined;
         if (threadIndex > -1) {
-          if (threads[threadIndex + 1]) {
-            nextThreadId = threads[threadIndex + 1]!.thread_id;
-          } else if (threads[threadIndex - 1]) {
-            nextThreadId = threads[threadIndex - 1]!.thread_id;
+          if (orderedThreads[threadIndex + 1]) {
+            nextThreadId = orderedThreads[threadIndex + 1]!.thread_id;
+            nextThreadAgentName = agentNameOfThreadMetadata(
+              orderedThreads[threadIndex + 1]!.metadata,
+            );
+          } else if (orderedThreads[threadIndex - 1]) {
+            nextThreadId = orderedThreads[threadIndex - 1]!.thread_id;
+            nextThreadAgentName = agentNameOfThreadMetadata(
+              orderedThreads[threadIndex - 1]!.metadata,
+            );
           }
         }
-        void router.push(`/workspace/chats/${nextThreadId}`);
+        void router.push(pathOfThread(nextThreadId, nextThreadAgentName));
       }
     },
-    [deleteThread, router, threadIdFromPath, threads],
+    [deleteThread, orderedThreads, router, threadIdFromPath],
   );
 
   const handleRenameClick = useCallback(
@@ -157,6 +260,98 @@ export function RecentChatList() {
   if (threads.length === 0) {
     return null;
   }
+
+  const renderThreadNode = (node: ThreadTreeNode, depth = 0): React.ReactNode => {
+    const thread = node.thread;
+    const threadAgentName = agentNameOfThreadMetadata(thread.metadata);
+    const isBranch = isBranchThreadMetadata(thread.metadata);
+    const isActive = pathOfThread(thread.thread_id, threadAgentName) === pathname;
+
+    return (
+      <div key={thread.thread_id} className="flex flex-col gap-1">
+        <SidebarMenuItem
+          className="group/side-menu-item"
+          style={depth > 0 ? { marginLeft: `${depth * 14}px` } : undefined}
+        >
+          <SidebarMenuButton isActive={isActive} asChild>
+            <div>
+              <Link
+                className="text-muted-foreground block w-full whitespace-nowrap group-hover/side-menu-item:overflow-hidden"
+                href={pathOfThread(thread.thread_id, threadAgentName)}
+              >
+                <span className="inline-flex items-center gap-1">
+                  {isBranch ? <GitBranch className="h-3 w-3 shrink-0" /> : null}
+                  <span>{titleOfThread(thread)}</span>
+                </span>
+              </Link>
+              {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" && (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <SidebarMenuAction
+                      showOnHover
+                      className="bg-background/50 hover:bg-background"
+                    >
+                      <MoreHorizontal />
+                      <span className="sr-only">{t.common.more}</span>
+                    </SidebarMenuAction>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent
+                    className="w-48 rounded-lg"
+                    side={"right"}
+                    align={"start"}
+                  >
+                    <DropdownMenuItem
+                      onSelect={() =>
+                        handleRenameClick(thread.thread_id, titleOfThread(thread))
+                      }
+                    >
+                      <Pencil className="text-muted-foreground" />
+                      <span>{t.common.rename}</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onSelect={() => handleShare(thread.thread_id)}
+                    >
+                      <Share2 className="text-muted-foreground" />
+                      <span>{t.common.share}</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <Download className="text-muted-foreground" />
+                        <span>{t.common.export}</span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        <DropdownMenuItem
+                          onSelect={() => handleExport(thread, "markdown")}
+                        >
+                          <FileText className="text-muted-foreground" />
+                          <span>{t.common.exportAsMarkdown}</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => handleExport(thread, "json")}
+                        >
+                          <FileJson className="text-muted-foreground" />
+                          <span>{t.common.exportAsJSON}</span>
+                        </DropdownMenuItem>
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onSelect={() => handleDelete(thread.thread_id)}
+                    >
+                      <Trash2 className="text-muted-foreground" />
+                      <span>{t.common.delete}</span>
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
+            </div>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+        {node.children.map((child) => renderThreadNode(child, depth + 1))}
+      </div>
+    );
+  };
+
   return (
     <>
       <SidebarGroup>
@@ -168,93 +363,7 @@ export function RecentChatList() {
         <SidebarGroupContent className="group-data-[collapsible=icon]:pointer-events-none group-data-[collapsible=icon]:-mt-8 group-data-[collapsible=icon]:opacity-0">
           <SidebarMenu>
             <div className="flex w-full flex-col gap-1">
-              {threads.map((thread) => {
-                const isActive = pathOfThread(thread.thread_id) === pathname;
-                return (
-                  <SidebarMenuItem
-                    key={thread.thread_id}
-                    className="group/side-menu-item"
-                  >
-                    <SidebarMenuButton isActive={isActive} asChild>
-                      <div>
-                        <Link
-                          className="text-muted-foreground block w-full whitespace-nowrap group-hover/side-menu-item:overflow-hidden"
-                          href={pathOfThread(thread.thread_id)}
-                        >
-                          {titleOfThread(thread)}
-                        </Link>
-                        {env.NEXT_PUBLIC_STATIC_WEBSITE_ONLY !== "true" && (
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <SidebarMenuAction
-                                showOnHover
-                                className="bg-background/50 hover:bg-background"
-                              >
-                                <MoreHorizontal />
-                                <span className="sr-only">{t.common.more}</span>
-                              </SidebarMenuAction>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                              className="w-48 rounded-lg"
-                              side={"right"}
-                              align={"start"}
-                            >
-                              <DropdownMenuItem
-                                onSelect={() =>
-                                  handleRenameClick(
-                                    thread.thread_id,
-                                    titleOfThread(thread),
-                                  )
-                                }
-                              >
-                                <Pencil className="text-muted-foreground" />
-                                <span>{t.common.rename}</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={() => handleShare(thread.thread_id)}
-                              >
-                                <Share2 className="text-muted-foreground" />
-                                <span>{t.common.share}</span>
-                              </DropdownMenuItem>
-                              <DropdownMenuSub>
-                                <DropdownMenuSubTrigger>
-                                  <Download className="text-muted-foreground" />
-                                  <span>{t.common.export}</span>
-                                </DropdownMenuSubTrigger>
-                                <DropdownMenuSubContent>
-                                  <DropdownMenuItem
-                                    onSelect={() =>
-                                      handleExport(thread, "markdown")
-                                    }
-                                  >
-                                    <FileText className="text-muted-foreground" />
-                                    <span>{t.common.exportAsMarkdown}</span>
-                                  </DropdownMenuItem>
-                                  <DropdownMenuItem
-                                    onSelect={() =>
-                                      handleExport(thread, "json")
-                                    }
-                                  >
-                                    <FileJson className="text-muted-foreground" />
-                                    <span>{t.common.exportAsJSON}</span>
-                                  </DropdownMenuItem>
-                                </DropdownMenuSubContent>
-                              </DropdownMenuSub>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onSelect={() => handleDelete(thread.thread_id)}
-                              >
-                                <Trash2 className="text-muted-foreground" />
-                                <span>{t.common.delete}</span>
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        )}
-                      </div>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+              {threadTree.map((node) => renderThreadNode(node))}
             </div>
           </SidebarMenu>
         </SidebarGroupContent>
