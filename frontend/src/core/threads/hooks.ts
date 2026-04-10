@@ -681,7 +681,9 @@ export function useRenameThread() {
           });
         },
       );
-      void queryClient.invalidateQueries({ queryKey: ["threads", "detail", threadId] });
+      void queryClient.invalidateQueries({
+        queryKey: ["threads", "detail", threadId],
+      });
     },
   });
 }
@@ -703,7 +705,8 @@ export function useCreateThreadBranch() {
     Error,
     { threadId: string; body: CreateThreadBranchRequest }
   >({
-    mutationFn: async ({ threadId, body }) => createThreadBranch(threadId, body),
+    mutationFn: async ({ threadId, body }) =>
+      createThreadBranch(threadId, body),
     onSuccess() {
       void queryClient.invalidateQueries({ queryKey: ["threads", "search"] });
     },

@@ -48,7 +48,7 @@ export function ThreadBranchActions({
       : typeof metadata?.parent_thread_id === "string"
         ? metadata.parent_thread_id
         : undefined;
-  const branchDisabled = isNewThread || isMock || isStreaming;
+  const branchDisabled = isNewThread || (isMock ?? false) || isStreaming;
 
   const handleCreateBranch = async () => {
     try {
@@ -67,7 +67,10 @@ export function ThreadBranchActions({
 
       toast.success(t.branching.branchCreated);
       void router.push(
-        pathOfThread(branch.thread_id, agentNameOfThreadMetadata(branch.metadata)),
+        pathOfThread(
+          branch.thread_id,
+          agentNameOfThreadMetadata(branch.metadata),
+        ),
       );
     } catch (error) {
       toast.error(
@@ -92,7 +95,9 @@ export function ThreadBranchActions({
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => void router.push(pathOfThread(parentThreadId, routeAgentName))}
+            onClick={() =>
+              void router.push(pathOfThread(parentThreadId, routeAgentName))
+            }
           >
             <Undo2 className="h-4 w-4" />
             <span className="hidden sm:inline">{t.branching.backToParent}</span>

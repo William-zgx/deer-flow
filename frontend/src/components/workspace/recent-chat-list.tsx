@@ -86,10 +86,15 @@ function parseThreadUpdatedAt(value: string | undefined) {
 function finalizeThreadNode(node: ThreadTreeNode) {
   for (const child of node.children) {
     finalizeThreadNode(child);
-    node.latestUpdatedAt = Math.max(node.latestUpdatedAt, child.latestUpdatedAt);
+    node.latestUpdatedAt = Math.max(
+      node.latestUpdatedAt,
+      child.latestUpdatedAt,
+    );
   }
 
-  node.children.sort((left, right) => right.latestUpdatedAt - left.latestUpdatedAt);
+  node.children.sort(
+    (left, right) => right.latestUpdatedAt - left.latestUpdatedAt,
+  );
 }
 
 function buildThreadTree(threads: AgentThread[]) {
@@ -175,7 +180,9 @@ export function RecentChatList() {
     (threadId: string) => {
       deleteThread({ threadId });
       if (threadId === threadIdFromPath) {
-        const threadIndex = orderedThreads.findIndex((t) => t.thread_id === threadId);
+        const threadIndex = orderedThreads.findIndex(
+          (t) => t.thread_id === threadId,
+        );
         let nextThreadPath = pathOfThread("new", {
           agent_name: agentNameFromPath,
         });
@@ -259,7 +266,10 @@ export function RecentChatList() {
     return null;
   }
 
-  const renderThreadNode = (node: ThreadTreeNode, depth = 0): React.ReactNode => {
+  const renderThreadNode = (
+    node: ThreadTreeNode,
+    depth = 0,
+  ): React.ReactNode => {
     const thread = node.thread;
     const isBranch = isBranchThreadMetadata(thread.metadata);
     const threadPath = pathOfThread(thread);
@@ -300,15 +310,16 @@ export function RecentChatList() {
                   >
                     <DropdownMenuItem
                       onSelect={() =>
-                        handleRenameClick(thread.thread_id, titleOfThread(thread))
+                        handleRenameClick(
+                          thread.thread_id,
+                          titleOfThread(thread),
+                        )
                       }
                     >
                       <Pencil className="text-muted-foreground" />
                       <span>{t.common.rename}</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onSelect={() => handleShare(thread)}
-                    >
+                    <DropdownMenuItem onSelect={() => handleShare(thread)}>
                       <Share2 className="text-muted-foreground" />
                       <span>{t.common.share}</span>
                     </DropdownMenuItem>

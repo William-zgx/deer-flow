@@ -6,7 +6,9 @@ import type {
   ThreadRecord,
 } from "./types";
 
-export async function fetchThreadRecord(threadId: string): Promise<ThreadRecord> {
+export async function fetchThreadRecord(
+  threadId: string,
+): Promise<ThreadRecord> {
   const response = await fetch(
     `${getBackendBaseURL()}/api/threads/${encodeURIComponent(threadId)}`,
   );

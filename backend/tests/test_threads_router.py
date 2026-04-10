@@ -279,26 +279,14 @@ def test_create_thread_branch_copies_state_and_uploads(tmp_path):
         metadata=payload["metadata"],
     )
 
-    child_checkpoint = asyncio.run(
-        checkpointer.aget_tuple(
-            {"configurable": {"thread_id": child_thread_id, "checkpoint_ns": ""}}
-        )
-    )
+    child_checkpoint = asyncio.run(checkpointer.aget_tuple({"configurable": {"thread_id": child_thread_id, "checkpoint_ns": ""}}))
     assert child_checkpoint is not None
-    assert child_checkpoint.checkpoint["channel_values"]["messages"] == [
-        {"type": "human", "content": "Main question"}
-    ]
+    assert child_checkpoint.checkpoint["channel_values"]["messages"] == [{"type": "human", "content": "Main question"}]
     assert child_checkpoint.checkpoint["channel_values"]["title"] == "Side branch"
 
-    assert (
-        paths.sandbox_uploads_dir(child_thread_id) / "brief.txt"
-    ).read_text(encoding="utf-8") == "hello branch"
+    assert (paths.sandbox_uploads_dir(child_thread_id) / "brief.txt").read_text(encoding="utf-8") == "hello branch"
 
-    parent_checkpoint = asyncio.run(
-        checkpointer.aget_tuple(
-            {"configurable": {"thread_id": parent_thread_id, "checkpoint_ns": ""}}
-        )
-    )
+    parent_checkpoint = asyncio.run(checkpointer.aget_tuple({"configurable": {"thread_id": parent_thread_id, "checkpoint_ns": ""}}))
     assert parent_checkpoint.checkpoint["channel_values"]["title"] == "Main thread"
 
 
@@ -388,15 +376,9 @@ def test_create_thread_branch_can_fork_from_explicit_checkpoint(tmp_path):
 
     assert response.status_code == 200
     child_thread_id = response.json()["thread_id"]
-    child_checkpoint = asyncio.run(
-        checkpointer.aget_tuple(
-            {"configurable": {"thread_id": child_thread_id, "checkpoint_ns": ""}}
-        )
-    )
+    child_checkpoint = asyncio.run(checkpointer.aget_tuple({"configurable": {"thread_id": child_thread_id, "checkpoint_ns": ""}}))
 
-    assert child_checkpoint.checkpoint["channel_values"]["messages"] == [
-        {"type": "human", "content": "before"}
-    ]
+    assert child_checkpoint.checkpoint["channel_values"]["messages"] == [{"type": "human", "content": "before"}]
     assert child_checkpoint.checkpoint["channel_values"]["title"] == "From before"
 
 
@@ -476,9 +458,5 @@ def test_create_thread_branch_rolls_back_partial_branch_on_checkpoint_failure(tm
     assert response.json()["detail"] == "Failed to create thread branch"
     assert asyncio.run(store.aget(threads.THREADS_NS, child_thread_id)) is None
     assert not paths.thread_dir(child_thread_id).exists()
-    assert asyncio.run(
-        checkpointer.aget_tuple(
-            {"configurable": {"thread_id": child_thread_id, "checkpoint_ns": ""}}
-        )
-    ) is None
+    assert asyncio.run(checkpointer.aget_tuple({"configurable": {"thread_id": child_thread_id, "checkpoint_ns": ""}})) is None
     delete_langgraph_thread.assert_awaited_once_with(child_thread_id)

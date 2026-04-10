@@ -84,10 +84,14 @@ export function titleOfThread(thread: AgentThread) {
   return thread.values?.title ?? "Untitled";
 }
 
-export function agentNameOfThreadMetadata(metadata: ThreadBranchMetadata | null | undefined) {
+export function agentNameOfThreadMetadata(
+  metadata: ThreadBranchMetadata | null | undefined,
+) {
   return normalizeCustomAgentName(metadata?.agent_name);
 }
 
-export function isBranchThreadMetadata(metadata: ThreadBranchMetadata | null | undefined) {
+export function isBranchThreadMetadata(
+  metadata: ThreadBranchMetadata | null | undefined,
+) {
   return metadata?.branch_role === "branch";
 }

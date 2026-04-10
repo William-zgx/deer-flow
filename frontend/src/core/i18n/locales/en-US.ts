@@ -252,13 +252,15 @@ export const enUS: Translations = {
   branching: {
     branch: "Branch",
     newBranch: "New branch",
-    newBranchDescription: "Fork the current conversation into an isolated branch",
+    newBranchDescription:
+      "Fork the current conversation into an isolated branch",
     backToParent: "Back to parent",
     backToParentDescription: "Return to the parent conversation",
     sideBranchDefaultName: "Side branch",
     branchCreated: "Branch created",
     branchCreateFailed: "Failed to create branch",
-    branchDisabledWhileStreaming: "Stop the current run before creating a branch",
+    branchDisabledWhileStreaming:
+      "Stop the current run before creating a branch",
   },
 
   // Page titles (document title)

@@ -12,9 +12,9 @@ matching the LangGraph Platform wire format expected by the
 
 from __future__ import annotations
 
-import shutil
 import logging
 import os
+import shutil
 import time
 import uuid
 from copy import deepcopy
@@ -273,11 +273,7 @@ def _copy_thread_branch_files(
 
 def _get_langgraph_base_url() -> str:
     """Resolve the internal LangGraph server base URL."""
-    configured = (
-        os.getenv("DEER_FLOW_INTERNAL_LANGGRAPH_BASE_URL")
-        or os.getenv("LANGGRAPH_URL")
-        or DEFAULT_LANGGRAPH_URL
-    )
+    configured = os.getenv("DEER_FLOW_INTERNAL_LANGGRAPH_BASE_URL") or os.getenv("LANGGRAPH_URL") or DEFAULT_LANGGRAPH_URL
     return configured.rstrip("/")
 
 
@@ -835,16 +831,10 @@ async def create_thread_branch(
     if not isinstance(source_title, str):
         source_title = None
 
-    source_checkpoint_id = (
-        getattr(checkpoint_tuple, "config", {}) or {}
-    ).get("configurable", {}).get("checkpoint_id")
+    source_checkpoint_id = (getattr(checkpoint_tuple, "config", {}) or {}).get("configurable", {}).get("checkpoint_id")
 
     parent_record = await _store_get(store, thread_id) if store is not None else None
-    parent_metadata = (
-        dict(parent_record.get("metadata", {}))
-        if parent_record is not None
-        else _strip_internal_checkpoint_metadata(source_metadata)
-    )
+    parent_metadata = dict(parent_record.get("metadata", {})) if parent_record is not None else _strip_internal_checkpoint_metadata(source_metadata)
 
     now = time.time()
     child_thread_id = str(uuid.uuid4())
