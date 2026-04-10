@@ -1,6 +1,24 @@
 import type { Message } from "@langchain/langgraph-sdk";
 
-import type { AgentThread, ThreadBranchMetadata } from "./types";
+import type {
+  AgentThread,
+  AgentThreadContext,
+  ThreadBranchMetadata,
+} from "./types";
+
+type ThreadRouteTarget =
+  | string
+  | {
+      thread_id: string;
+      context?: Pick<AgentThreadContext, "agent_name"> | null;
+      metadata?: ThreadBranchMetadata | null;
+    };
+
+type ThreadRouteContext =
+  | string
+  | Pick<AgentThreadContext, "agent_name">
+  | null
+  | undefined;
 
 function normalizeCustomAgentName(agentName: string | null | undefined) {
   if (typeof agentName !== "string") {
@@ -15,10 +33,36 @@ function normalizeCustomAgentName(agentName: string | null | undefined) {
   return normalized;
 }
 
-export function pathOfThread(threadId: string, agentName?: string) {
-  const routeAgentName = normalizeCustomAgentName(agentName);
+function resolveThreadAgentName(
+  thread: ThreadRouteTarget,
+  context?: ThreadRouteContext,
+) {
+  const contextAgentName =
+    typeof context === "string" ? context : context?.agent_name;
+  const normalizedContextAgentName = normalizeCustomAgentName(contextAgentName);
+  if (normalizedContextAgentName) {
+    return normalizedContextAgentName;
+  }
+
+  if (typeof thread === "string") {
+    return undefined;
+  }
+
+  const normalizedThreadAgentName = normalizeCustomAgentName(
+    thread.context?.agent_name,
+  );
+  if (normalizedThreadAgentName) {
+    return normalizedThreadAgentName;
+  }
+
+  return normalizeCustomAgentName(thread.metadata?.agent_name);
+}
+
+export function pathOfThread(thread: ThreadRouteTarget, context?: ThreadRouteContext) {
+  const threadId = typeof thread === "string" ? thread : thread.thread_id;
+  const routeAgentName = resolveThreadAgentName(thread, context);
   if (routeAgentName) {
-    return `/workspace/agents/${routeAgentName}/chats/${threadId}`;
+    return `/workspace/agents/${encodeURIComponent(routeAgentName)}/chats/${threadId}`;
   }
   return `/workspace/chats/${threadId}`;
 }
@@ -40,7 +84,9 @@ export function titleOfThread(thread: AgentThread) {
   return thread.values?.title ?? "Untitled";
 }
 
-export function agentNameOfThreadMetadata(metadata: ThreadBranchMetadata | null | undefined) {
+export function agentNameOfThreadMetadata(
+  metadata: ThreadBranchMetadata | null | undefined,
+) {
   return normalizeCustomAgentName(metadata?.agent_name);
 }
 

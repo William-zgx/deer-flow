@@ -156,7 +156,11 @@ export function RecentChatList() {
   const { t } = useI18n();
   const router = useRouter();
   const pathname = usePathname();
-  const { thread_id: threadIdFromPath } = useParams<{ thread_id: string }>();
+  const { thread_id: threadIdFromPath, agent_name: agentNameFromPath } =
+    useParams<{
+      thread_id: string;
+      agent_name?: string;
+    }>();
   const { data: threads = [] } = useThreads();
   const threadTree = buildThreadTree(threads);
   const orderedThreads = flattenThreadTree(threadTree);
@@ -173,25 +177,20 @@ export function RecentChatList() {
       deleteThread({ threadId });
       if (threadId === threadIdFromPath) {
         const threadIndex = orderedThreads.findIndex((t) => t.thread_id === threadId);
-        let nextThreadId = "new";
-        let nextThreadAgentName: string | undefined;
+        let nextThreadPath = pathOfThread("new", {
+          agent_name: agentNameFromPath,
+        });
         if (threadIndex > -1) {
           if (orderedThreads[threadIndex + 1]) {
-            nextThreadId = orderedThreads[threadIndex + 1]!.thread_id;
-            nextThreadAgentName = agentNameOfThreadMetadata(
-              orderedThreads[threadIndex + 1]!.metadata,
-            );
+            nextThreadPath = pathOfThread(orderedThreads[threadIndex + 1]!);
           } else if (orderedThreads[threadIndex - 1]) {
-            nextThreadId = orderedThreads[threadIndex - 1]!.thread_id;
-            nextThreadAgentName = agentNameOfThreadMetadata(
-              orderedThreads[threadIndex - 1]!.metadata,
-            );
+            nextThreadPath = pathOfThread(orderedThreads[threadIndex - 1]!);
           }
         }
-        void router.push(pathOfThread(nextThreadId, nextThreadAgentName));
+        void router.push(nextThreadPath);
       }
     },
-    [deleteThread, orderedThreads, router, threadIdFromPath],
+    [agentNameFromPath, deleteThread, orderedThreads, router, threadIdFromPath],
   );
 
   const handleRenameClick = useCallback(
@@ -213,7 +212,7 @@ export function RecentChatList() {
   }, [renameThread, renameThreadId, renameValue]);
 
   const handleShare = useCallback(
-    async (threadId: string) => {
+    async (thread: AgentThread) => {
       // Always use Vercel URL for sharing so others can access
       const VERCEL_URL = "https://deer-flow-v2.vercel.app";
       const isLocalhost =
@@ -221,7 +220,7 @@ export function RecentChatList() {
         window.location.hostname === "127.0.0.1";
       // On localhost: use Vercel URL; On production: use current origin
       const baseUrl = isLocalhost ? VERCEL_URL : window.location.origin;
-      const shareUrl = `${baseUrl}/workspace/chats/${threadId}`;
+      const shareUrl = `${baseUrl}${pathOfThread(thread)}`;
       try {
         await navigator.clipboard.writeText(shareUrl);
         toast.success(t.clipboard.linkCopied);
@@ -265,7 +264,8 @@ export function RecentChatList() {
     const thread = node.thread;
     const threadAgentName = agentNameOfThreadMetadata(thread.metadata);
     const isBranch = isBranchThreadMetadata(thread.metadata);
-    const isActive = pathOfThread(thread.thread_id, threadAgentName) === pathname;
+    const threadPath = pathOfThread(thread, threadAgentName);
+    const isActive = threadPath === pathname;
 
     return (
       <div key={thread.thread_id} className="flex flex-col gap-1">
@@ -277,7 +277,7 @@ export function RecentChatList() {
             <div>
               <Link
                 className="text-muted-foreground block w-full whitespace-nowrap group-hover/side-menu-item:overflow-hidden"
-                href={pathOfThread(thread.thread_id, threadAgentName)}
+                href={threadPath}
               >
                 <span className="inline-flex items-center gap-1">
                   {isBranch ? <GitBranch className="h-3 w-3 shrink-0" /> : null}
@@ -309,7 +309,7 @@ export function RecentChatList() {
                       <span>{t.common.rename}</span>
                     </DropdownMenuItem>
                     <DropdownMenuItem
-                      onSelect={() => handleShare(thread.thread_id)}
+                      onSelect={() => handleShare(thread)}
                     >
                       <Share2 className="text-muted-foreground" />
                       <span>{t.common.share}</span>
