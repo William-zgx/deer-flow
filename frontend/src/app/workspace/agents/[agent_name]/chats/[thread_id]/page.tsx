@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 import { BotIcon, PlusSquare } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
@@ -17,6 +19,7 @@ import {
   MESSAGE_LIST_FOLLOWUPS_EXTRA_PADDING_BOTTOM,
 } from "@/components/workspace/messages";
 import { ThreadContext } from "@/components/workspace/messages/context";
+import { ThreadBranchActions } from "@/components/workspace/thread-branch-actions";
 import { ThreadTitle } from "@/components/workspace/thread-title";
 import { TodoList } from "@/components/workspace/todo-list";
 import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicator";
@@ -31,17 +34,22 @@ import { env } from "@/env";
 import { cn } from "@/lib/utils";
 
 export default function AgentChatPage() {
+  const { agent_name, thread_id } = useParams<{
+    agent_name: string;
+    thread_id: string;
+  }>();
+
+  if (agent_name === "default") {
+    return <DefaultAgentRouteRedirect threadId={thread_id} />;
+  }
+
   const { t } = useI18n();
   const [showFollowups, setShowFollowups] = useState(false);
   const router = useRouter();
 
-  const { agent_name } = useParams<{
-    agent_name: string;
-  }>();
-
   const { agent } = useAgent(agent_name);
 
-  const { threadId, setThreadId, isNewThread, setIsNewThread } =
+  const { threadId, setThreadId, isNewThread, setIsNewThread, isMock } =
     useThreadChat();
   const [settings, setSettings] = useThreadSettings(threadId);
 
@@ -128,6 +136,14 @@ export default function AgentChatPage() {
                   <PlusSquare /> {t.agents.newChat}
                 </Button>
               </Tooltip>
+              <ThreadBranchActions
+                threadId={threadId}
+                isNewThread={isNewThread}
+                isStreaming={thread.isLoading}
+                isMock={isMock}
+                title={thread.values.title}
+                agentName={agent_name}
+              />
               <TokenUsageIndicator messages={thread.messages} />
               <ExportTrigger threadId={threadId} />
               <ArtifactTrigger />
@@ -202,4 +218,14 @@ export default function AgentChatPage() {
       </ChatBox>
     </ThreadContext.Provider>
   );
+}
+
+function DefaultAgentRouteRedirect({ threadId }: { threadId: string }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace(`/workspace/chats/${threadId}`);
+  }, [router, threadId]);
+
+  return null;
 }
