@@ -89,6 +89,10 @@ const config = {
         destination: `${gatewayURL}/api/channels`,
       });
       rewrites.push({
+        source: "/api/threads",
+        destination: `${gatewayURL}/api/threads`,
+      });
+      rewrites.push({
         source: "/api/threads/:path*",
         destination: `${gatewayURL}/api/threads/:path*`,
       });

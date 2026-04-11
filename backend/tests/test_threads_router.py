@@ -14,6 +14,7 @@ from deerflow.config.paths import Paths
 class _DummyStore:
     def __init__(self):
         self.records = {}
+        self.fail_keys = set()
 
     async def aget(self, namespace, key):
         value = self.records.get((tuple(namespace), key))
@@ -22,6 +23,8 @@ class _DummyStore:
         return SimpleNamespace(value=value)
 
     async def aput(self, namespace, key, value):
+        if key in self.fail_keys:
+            raise RuntimeError(f"failed to write store record for {key}")
         self.records[(tuple(namespace), key)] = value
 
     async def adelete(self, namespace, key):
@@ -192,6 +195,21 @@ def test_delete_thread_data_returns_generic_500_error(tmp_path):
     log_exception.assert_called_once_with("Failed to delete thread data for %s", "thread-cleanup")
 
 
+def test_copy_directory_contents_skips_symlinks(tmp_path):
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    source.mkdir()
+    outside = tmp_path / "outside.txt"
+    outside.write_text("secret", encoding="utf-8")
+    (source / "real.txt").write_text("copied", encoding="utf-8")
+    (source / "link.txt").symlink_to(outside)
+
+    threads._copy_directory_contents(source, destination)
+
+    assert (destination / "real.txt").read_text(encoding="utf-8") == "copied"
+    assert not (destination / "link.txt").exists()
+
+
 def test_create_thread_branch_copies_state_and_uploads(tmp_path):
     paths = Paths(tmp_path)
     parent_thread_id = "parent-thread"
@@ -209,7 +227,7 @@ def test_create_thread_branch_copies_state_and_uploads(tmp_path):
         "status": "idle",
         "created_at": 1.0,
         "updated_at": 1.0,
-        "metadata": {"agent_name": "researcher"},
+        "metadata": {"agent_name": "researcher", "branch_depth": "2"},
         "values": {"title": "Main thread"},
     }
     asyncio.run(store.aput(threads.THREADS_NS, parent_thread_id, parent_record))
@@ -273,7 +291,9 @@ def test_create_thread_branch_copies_state_and_uploads(tmp_path):
     assert payload["metadata"]["branch_role"] == "branch"
     assert payload["metadata"]["return_thread_id"] == parent_thread_id
     assert payload["metadata"]["agent_name"] == "researcher"
+    assert payload["metadata"]["branch_depth"] == 3
     assert payload["values"]["title"] == "Side branch"
+    assert payload["values"]["artifacts"] == []
     ensure_thread.assert_awaited_once_with(
         child_thread_id,
         metadata=payload["metadata"],
@@ -281,6 +301,7 @@ def test_create_thread_branch_copies_state_and_uploads(tmp_path):
 
     child_checkpoint = asyncio.run(checkpointer.aget_tuple({"configurable": {"thread_id": child_thread_id, "checkpoint_ns": ""}}))
     assert child_checkpoint is not None
+    assert child_checkpoint.checkpoint["channel_values"]["artifacts"] == []
     assert child_checkpoint.checkpoint["channel_values"]["messages"] == [{"type": "human", "content": "Main question"}]
     assert child_checkpoint.checkpoint["channel_values"]["title"] == "Side branch"
 
@@ -382,6 +403,67 @@ def test_create_thread_branch_can_fork_from_explicit_checkpoint(tmp_path):
     assert child_checkpoint.checkpoint["channel_values"]["title"] == "From before"
 
 
+def test_create_thread_branch_defaults_invalid_branch_depth_metadata_to_zero(tmp_path):
+    paths = Paths(tmp_path)
+    parent_thread_id = "parent-thread"
+
+    store = _DummyStore()
+    checkpointer = _DummyCheckpointer()
+
+    asyncio.run(
+        store.aput(
+            threads.THREADS_NS,
+            parent_thread_id,
+            {
+                "thread_id": parent_thread_id,
+                "status": "idle",
+                "created_at": 1.0,
+                "updated_at": 1.0,
+                "metadata": {"branch_depth": "oops"},
+                "values": {"title": "Latest"},
+            },
+        )
+    )
+    asyncio.run(
+        checkpointer.aput(
+            {"configurable": {"thread_id": parent_thread_id, "checkpoint_ns": ""}},
+            {
+                "v": 2,
+                "id": "source",
+                "ts": "2026-04-10T00:00:00Z",
+                "channel_values": {"title": "Main thread"},
+                "channel_versions": {},
+                "versions_seen": {},
+                "pending_sends": [],
+                "updated_channels": None,
+            },
+            {"created_at": 1.0},
+            {},
+        )
+    )
+
+    app = FastAPI()
+    app.include_router(threads.router)
+    app.state.checkpointer = checkpointer
+    app.state.store = store
+
+    with (
+        patch("app.gateway.routers.threads.get_paths", return_value=paths),
+        patch(
+            "app.gateway.routers.threads._ensure_langgraph_thread_exists",
+            AsyncMock(),
+        ),
+    ):
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/threads/{parent_thread_id}/branches",
+                json={"branch_name": "Side branch"},
+            )
+
+    assert response.status_code == 200
+    assert response.json()["metadata"]["branch_depth"] == 1
+
+
 def test_create_thread_branch_rolls_back_partial_branch_on_checkpoint_failure(tmp_path):
     paths = Paths(tmp_path)
     parent_thread_id = "parent-thread"
@@ -429,6 +511,123 @@ def test_create_thread_branch_rolls_back_partial_branch_on_checkpoint_failure(tm
         )
     )
     checkpointer.fail_thread_ids.add(child_thread_id)
+
+    app = FastAPI()
+    app.include_router(threads.router)
+    app.state.checkpointer = checkpointer
+    app.state.store = store
+
+    delete_langgraph_thread = AsyncMock()
+    with (
+        patch("app.gateway.routers.threads.get_paths", return_value=paths),
+        patch(
+            "app.gateway.routers.threads._ensure_langgraph_thread_exists",
+            AsyncMock(),
+        ),
+        patch(
+            "app.gateway.routers.threads._delete_langgraph_thread",
+            delete_langgraph_thread,
+        ),
+        patch("app.gateway.routers.threads.uuid.uuid4", return_value=child_thread_id),
+    ):
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/threads/{parent_thread_id}/branches",
+                json={"branch_name": "Side branch"},
+            )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to create thread branch"
+    assert asyncio.run(store.aget(threads.THREADS_NS, child_thread_id)) is None
+    assert not paths.thread_dir(child_thread_id).exists()
+    assert asyncio.run(checkpointer.aget_tuple({"configurable": {"thread_id": child_thread_id, "checkpoint_ns": ""}})) is None
+    delete_langgraph_thread.assert_awaited_once_with(child_thread_id)
+
+
+def test_create_thread_branch_rolls_back_partial_branch_on_copy_failure(tmp_path):
+    paths = Paths(tmp_path)
+    parent_thread_id = "parent-thread"
+    child_thread_id = "child-thread"
+
+    store = _DummyStore()
+    checkpointer = _DummyCheckpointer()
+    asyncio.run(
+        checkpointer.aput(
+            {"configurable": {"thread_id": parent_thread_id, "checkpoint_ns": ""}},
+            {
+                "v": 2,
+                "id": "source",
+                "ts": "2026-04-10T00:00:00Z",
+                "channel_values": {"title": "Main thread"},
+                "channel_versions": {},
+                "versions_seen": {},
+                "pending_sends": [],
+                "updated_channels": None,
+            },
+            {"created_at": 1.0},
+            {},
+        )
+    )
+
+    app = FastAPI()
+    app.include_router(threads.router)
+    app.state.checkpointer = checkpointer
+    app.state.store = store
+
+    delete_langgraph_thread = AsyncMock()
+    with (
+        patch("app.gateway.routers.threads.get_paths", return_value=paths),
+        patch(
+            "app.gateway.routers.threads._ensure_langgraph_thread_exists",
+            AsyncMock(),
+        ),
+        patch(
+            "app.gateway.routers.threads._delete_langgraph_thread",
+            delete_langgraph_thread,
+        ),
+        patch("app.gateway.routers.threads._copy_thread_branch_files", side_effect=RuntimeError("copy failed")),
+        patch("app.gateway.routers.threads.uuid.uuid4", return_value=child_thread_id),
+    ):
+        with TestClient(app) as client:
+            response = client.post(
+                f"/api/threads/{parent_thread_id}/branches",
+                json={"branch_name": "Side branch"},
+            )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Failed to create thread branch"
+    assert asyncio.run(store.aget(threads.THREADS_NS, child_thread_id)) is None
+    assert not paths.thread_dir(child_thread_id).exists()
+    assert asyncio.run(checkpointer.aget_tuple({"configurable": {"thread_id": child_thread_id, "checkpoint_ns": ""}})) is None
+    delete_langgraph_thread.assert_awaited_once_with(child_thread_id)
+
+
+def test_create_thread_branch_rolls_back_partial_branch_on_store_failure(tmp_path):
+    paths = Paths(tmp_path)
+    parent_thread_id = "parent-thread"
+    child_thread_id = "child-thread"
+    paths.ensure_thread_dirs(parent_thread_id)
+
+    store = _DummyStore()
+    store.fail_keys.add(child_thread_id)
+    checkpointer = _DummyCheckpointer()
+    asyncio.run(
+        checkpointer.aput(
+            {"configurable": {"thread_id": parent_thread_id, "checkpoint_ns": ""}},
+            {
+                "v": 2,
+                "id": "source",
+                "ts": "2026-04-10T00:00:00Z",
+                "channel_values": {"title": "Main thread"},
+                "channel_versions": {},
+                "versions_seen": {},
+                "pending_sends": [],
+                "updated_channels": None,
+            },
+            {"created_at": 1.0},
+            {},
+        )
+    )
 
     app = FastAPI()
     app.include_router(threads.router)

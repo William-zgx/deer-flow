@@ -117,7 +117,7 @@ class ThreadBranchResponse(BaseModel):
     parent_thread_id: str = Field(description="Immediate parent thread identifier")
     root_thread_id: str = Field(description="Root thread identifier for the branch tree")
     fork_checkpoint_id: str | None = Field(default=None, description="Source checkpoint used for the fork")
-    created_at: str = Field(default="", description="ISO timestamp")
+    created_at: str = Field(default="", description="Unix timestamp string")
     metadata: dict[str, Any] = Field(default_factory=dict, description="Branch metadata")
     values: dict[str, Any] = Field(default_factory=dict, description="Initial branch channel values")
 
@@ -231,13 +231,50 @@ def _copy_directory_contents(source: Path, destination: Path) -> None:
     if not source.exists():
         return
 
+    def _copy_entry(entry: Path, target: Path) -> None:
+        if entry.is_symlink():
+            logger.warning("Skipping symlink while copying branch files: %s", entry)
+            return
+        if entry.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            for child in entry.iterdir():
+                _copy_entry(child, target / child.name)
+            return
+        shutil.copy2(entry, target, follow_symlinks=False)
+
     destination.mkdir(parents=True, exist_ok=True)
     for entry in source.iterdir():
-        target = destination / entry.name
-        if entry.is_dir():
-            shutil.copytree(entry, target, dirs_exist_ok=True)
-        else:
-            shutil.copy2(entry, target)
+        _copy_entry(entry, destination / entry.name)
+
+
+def _parse_branch_depth(value: Any) -> int:
+    """Parse branch depth metadata defensively."""
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(value, 0)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            try:
+                return max(int(stripped), 0)
+            except ValueError:
+                return 0
+    return 0
+
+
+def _prepare_branch_channel_values(
+    channel_values: dict[str, Any],
+    *,
+    branch_name: str,
+    copy_outputs: bool,
+) -> dict[str, Any]:
+    """Normalize copied channel values for a new branch."""
+    prepared = deepcopy(channel_values)
+    prepared["title"] = branch_name
+    if not copy_outputs and "artifacts" in prepared:
+        prepared["artifacts"] = []
+    return prepared
 
 
 def _copy_thread_branch_files(
@@ -826,7 +863,7 @@ async def create_thread_branch(
 
     source_checkpoint = dict(getattr(checkpoint_tuple, "checkpoint", {}) or {})
     source_metadata = dict(getattr(checkpoint_tuple, "metadata", {}) or {})
-    source_channel_values = deepcopy(source_checkpoint.get("channel_values", {}))
+    source_channel_values = dict(source_checkpoint.get("channel_values", {}) or {})
     source_title = source_channel_values.get("title")
     if not isinstance(source_title, str):
         source_title = None
@@ -839,7 +876,7 @@ async def create_thread_branch(
     now = time.time()
     child_thread_id = str(uuid.uuid4())
     root_thread_id = str(parent_metadata.get("root_thread_id") or thread_id)
-    branch_depth = int(parent_metadata.get("branch_depth") or 0) + 1
+    branch_depth = _parse_branch_depth(parent_metadata.get("branch_depth")) + 1
     branch_name = (body.branch_name or "").strip() or source_title or "Side branch"
 
     branch_metadata = {
@@ -856,7 +893,11 @@ async def create_thread_branch(
         "branch_status": "active",
     }
 
-    source_channel_values["title"] = branch_name
+    source_channel_values = _prepare_branch_channel_values(
+        source_channel_values,
+        branch_name=branch_name,
+        copy_outputs=body.copy_outputs,
+    )
 
     try:
         await _ensure_langgraph_thread_exists(
@@ -881,6 +922,12 @@ async def create_thread_branch(
         )
     except Exception:
         logger.exception("Failed to copy thread files when branching from %s", thread_id)
+        await _cleanup_failed_branch_creation(
+            child_thread_id,
+            store=store,
+            checkpointer=checkpointer,
+            paths=paths,
+        )
         raise HTTPException(status_code=500, detail="Failed to create thread branch")
 
     branch_values = {"title": branch_name}
@@ -899,6 +946,12 @@ async def create_thread_branch(
             )
         except Exception:
             logger.exception("Failed to write branch thread %s to store", child_thread_id)
+            await _cleanup_failed_branch_creation(
+                child_thread_id,
+                store=store,
+                checkpointer=checkpointer,
+                paths=paths,
+            )
             raise HTTPException(status_code=500, detail="Failed to create thread branch")
 
     try:
