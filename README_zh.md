@@ -117,9 +117,17 @@ https://github.com/user-attachments/assets/a8bcadc4-e040-4cf2-8fda-dd768b999c18
        model: google/gemini-2.5-flash-preview
        api_key: $OPENAI_API_KEY          # 这里 OpenRouter 依然沿用 OpenAI 兼容字段名
        base_url: https://openrouter.ai/api/v1
+
+     - name: glm-5.1
+       display_name: GLM-5.1 (Zhipu)
+       use: langchain_openai:ChatOpenAI
+       model: glm-5.1
+       api_key: $ZHIPU_API_KEY
+       base_url: https://open.bigmodel.cn/api/paas/v4
+       temperature: 1.0
    ```
 
-   OpenRouter 以及类似的 OpenAI 兼容网关，建议通过 `langchain_openai:ChatOpenAI` 配合 `base_url` 来配置。如果你更想用 provider 自己的环境变量名，也可以直接把 `api_key` 指向对应变量，例如 `api_key: $OPENROUTER_API_KEY`。
+   OpenRouter、智谱 BigModel 以及类似的 OpenAI 兼容网关，建议通过 `langchain_openai:ChatOpenAI` 配合 `base_url` 来配置。如果你更想用 provider 自己的环境变量名，也可以直接把 `api_key` 指向对应变量，例如 `api_key: $OPENROUTER_API_KEY` 或 `api_key: $ZHIPU_API_KEY`。
 
 4. **为已配置的模型设置 API key**
 
@@ -131,6 +139,7 @@ https://github.com/user-attachments/assets/a8bcadc4-e040-4cf2-8fda-dd768b999c18
    TAVILY_API_KEY=your-tavily-api-key
    OPENAI_API_KEY=your-openai-api-key
    # 如果配置使用的是 langchain_openai:ChatOpenAI + base_url，OpenRouter 也会读取 OPENAI_API_KEY
+   ZHIPU_API_KEY=your-zhipu-api-key
    # 其他 provider 的 key 按需补充
    INFOQUEST_API_KEY=your-infoquest-api-key
    ```
@@ -139,6 +148,7 @@ https://github.com/user-attachments/assets/a8bcadc4-e040-4cf2-8fda-dd768b999c18
 
    ```bash
    export OPENAI_API_KEY=your-openai-api-key
+   export ZHIPU_API_KEY=your-zhipu-api-key
    ```
 
 - 方式 C：直接编辑 `config.yaml`（不建议用于生产环境）

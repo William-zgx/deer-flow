@@ -1,9 +1,12 @@
 import { getBackendBaseURL } from "../config";
 
-import type { Model } from "./types";
+import { normalizeModelsResponse, type ModelsResponse } from "./normalize";
 
 export async function loadModels() {
   const res = await fetch(`${getBackendBaseURL()}/api/models`);
-  const { models } = (await res.json()) as { models: Model[] };
-  return models;
+  if (!res.ok) {
+    throw new Error(`Failed to load models: ${res.status}`);
+  }
+  const payload = (await res.json()) as ModelsResponse;
+  return normalizeModelsResponse(payload);
 }

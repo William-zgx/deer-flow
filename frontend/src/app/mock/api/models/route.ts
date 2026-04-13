@@ -1,6 +1,6 @@
 export function GET() {
   return Response.json({
-    models: [
+    data: [
       {
         id: "doubao-seed-1.8",
         name: "doubao-seed-1.8",
