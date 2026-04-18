@@ -24,6 +24,7 @@ import { TokenUsageIndicator } from "@/components/workspace/token-usage-indicato
 import { Tooltip } from "@/components/workspace/tooltip";
 import { useAgent } from "@/core/agents";
 import { useI18n } from "@/core/i18n/hooks";
+import { useModels } from "@/core/models/hooks";
 import { useNotification } from "@/core/notification/hooks";
 import { useThreadSettings } from "@/core/settings";
 import { useThreadStream } from "@/core/threads/hooks";
@@ -54,6 +55,7 @@ function AgentChatPageContent({ agentName }: { agentName: string }) {
   const { threadId, setThreadId, isNewThread, setIsNewThread, isMock } =
     useThreadChat();
   const [settings, setSettings] = useThreadSettings(threadId);
+  const { tokenUsageEnabled } = useModels();
 
   const { showNotification } = useNotification();
   const [thread, sendMessage] = useThreadStream({
@@ -146,7 +148,10 @@ function AgentChatPageContent({ agentName }: { agentName: string }) {
                 title={thread.values.title}
                 agentName={agentName}
               />
-              <TokenUsageIndicator messages={thread.messages} />
+              <TokenUsageIndicator
+                enabled={tokenUsageEnabled}
+                messages={thread.messages}
+              />
               <ExportTrigger threadId={threadId} />
               <ArtifactTrigger />
             </div>
@@ -159,6 +164,7 @@ function AgentChatPageContent({ agentName }: { agentName: string }) {
                 threadId={threadId}
                 thread={thread}
                 paddingBottom={messageListPaddingBottom}
+                tokenUsageEnabled={tokenUsageEnabled}
               />
             </div>
 

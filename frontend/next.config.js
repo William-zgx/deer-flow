@@ -53,48 +53,24 @@ const config = {
         destination: `${gatewayURL}/api/agents/:path*`,
       });
       rewrites.push({
-        source: "/api/models",
-        destination: `${gatewayURL}/api/models`,
-      });
-      rewrites.push({
-        source: "/api/mcp/:path*",
-        destination: `${gatewayURL}/api/mcp/:path*`,
-      });
-      rewrites.push({
-        source: "/api/mcp",
-        destination: `${gatewayURL}/api/mcp`,
-      });
-      rewrites.push({
-        source: "/api/memory/:path*",
-        destination: `${gatewayURL}/api/memory/:path*`,
-      });
-      rewrites.push({
-        source: "/api/memory",
-        destination: `${gatewayURL}/api/memory`,
+        source: "/api/skills",
+        destination: `${gatewayURL}/api/skills`,
       });
       rewrites.push({
         source: "/api/skills/:path*",
         destination: `${gatewayURL}/api/skills/:path*`,
       });
+
+      // Catch-all for remaining gateway API routes (models, threads, memory,
+      // mcp, artifacts, uploads, suggestions, runs, etc.) that don't have
+      // their own NEXT_PUBLIC_* env var toggle.
+      //
+      // NOTE: this must come AFTER the /api/langgraph rewrite above so that
+      // LangGraph routes are matched first when NEXT_PUBLIC_LANGGRAPH_BASE_URL
+      // is unset.
       rewrites.push({
-        source: "/api/skills",
-        destination: `${gatewayURL}/api/skills`,
-      });
-      rewrites.push({
-        source: "/api/channels/:path*",
-        destination: `${gatewayURL}/api/channels/:path*`,
-      });
-      rewrites.push({
-        source: "/api/channels",
-        destination: `${gatewayURL}/api/channels`,
-      });
-      rewrites.push({
-        source: "/api/threads",
-        destination: `${gatewayURL}/api/threads`,
-      });
-      rewrites.push({
-        source: "/api/threads/:path*",
-        destination: `${gatewayURL}/api/threads/:path*`,
+        source: "/api/:path*",
+        destination: `${gatewayURL}/api/:path*`,
       });
     }
 
